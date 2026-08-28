@@ -407,7 +407,7 @@ GF_Err m2psdmx_process(GF_Filter *filter)
 			}
 			dst_pck = gf_filter_pck_new_alloc(st->opid, buf_len, &pck_data);
 			if (!dst_pck) continue;
-			
+
 			memcpy(pck_data, buf, buf_len);
 			if (cts != GF_FILTER_NO_TS) {
 				cts -= ctx->first_dts;
@@ -502,3 +502,9 @@ const GF_FilterRegister * EMSCRIPTEN_KEEPALIVE dynCall_m2psdmx_register(GF_Filte
 #endif
 }
 
+
+#include "filter_register.h"
+__attribute__((constructor))
+void register_m2psdmx(void) {
+    gf_filter_auto_register("m2psdmx", dynCall_m2psdmx_register);
+}

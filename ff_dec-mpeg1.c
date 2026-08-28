@@ -565,7 +565,7 @@ static GF_Err ffdec_process_audio(GF_Filter *filter, struct _gf_ffdec_ctx *ctx)
 decode_next:
 	pck = gf_filter_pid_get_packet(ctx->in_pid);
 	in_size = 0;
-	
+
 	if (ctx->reconfig_pending) {
 		pck = NULL;
 	} else if (!pck) {
@@ -663,7 +663,7 @@ dispatch_next:
 			} else {
 				samples_to_trash = (u32) -ctx->delay;
 			}
-			
+
 			if (!samples_to_trash || (samples_to_trash > (u32) frame->nb_samples) ) {
 				frame->nb_samples = 0;
 				samples_to_trash = 0;
@@ -1131,7 +1131,7 @@ static GF_Err ffdec_configure_pid(GF_Filter *filter, GF_FilterPid *pid, Bool is_
 				}
 			}
 
-            
+
 			//we could further optimize by detecting we have the same codecid and injecting the extradata
 			//but this is not 100% reliable, and will require parsing AVC/HEVC config
 			//since this seems to work properly with decoder close/open, we keep it as is
@@ -1526,3 +1526,8 @@ const GF_FilterRegister *dynCall_ffdec_mpeg1_register(GF_FilterSession *session)
 }
 #endif
 
+#include "filter_register.h"
+__attribute__((constructor))
+void register_ffdec_mpeg1(void) {
+    gf_filter_auto_register("ffdec_mpeg1", dynCall_ffdec_mpeg1_register);
+}
