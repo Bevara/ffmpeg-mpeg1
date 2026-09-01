@@ -493,7 +493,7 @@ GF_FilterRegister M2PSDmxRegister = {
 
 #endif // GPAC_DISABLE_MPEG2PS
 
-const GF_FilterRegister * EMSCRIPTEN_KEEPALIVE dynCall_m2psdmx_register(GF_FilterSession *session)
+const GF_FilterRegister * EMSCRIPTEN_KEEPALIVE m2psdmx_register(GF_FilterSession *session)
 {
 #ifndef GPAC_DISABLE_MPEG2PS
 	return &M2PSDmxRegister;
@@ -506,5 +506,5 @@ const GF_FilterRegister * EMSCRIPTEN_KEEPALIVE dynCall_m2psdmx_register(GF_Filte
 #include "filter_register.h"
 __attribute__((constructor))
 void register_m2psdmx(void) {
-    gf_filter_auto_register("m2psdmx", dynCall_m2psdmx_register);
+    gf_filter_auto_register("m2psdmx", m2psdmx_register);
 }
