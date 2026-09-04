@@ -2,7 +2,7 @@
  *			GPAC - Multimedia Framework C SDK
  *
  *			Authors: Jean Le Feuvre
- *			Copyright (c) Telecom ParisTech 2005-2023
+ *			Copyright (c) Telecom ParisTech 2005-2026
  *					All rights reserved
  *
  *  This file is part of GPAC / MPEG Program Stream demuxer filter
@@ -30,7 +30,7 @@
 #include <gpac/bitstream.h>
 
 #ifndef GPAC_DISABLE_MPEG2PS
-#include "mpeg2_ps.h"
+#include "../media_tools/mpeg2_ps.h"
 #include <gpac/media_tools.h>
 
 typedef struct
@@ -407,7 +407,7 @@ GF_Err m2psdmx_process(GF_Filter *filter)
 			}
 			dst_pck = gf_filter_pck_new_alloc(st->opid, buf_len, &pck_data);
 			if (!dst_pck) continue;
-
+			
 			memcpy(pck_data, buf, buf_len);
 			if (cts != GF_FILTER_NO_TS) {
 				cts -= ctx->first_dts;
@@ -465,7 +465,7 @@ static const GF_FilterCapability M2PSDmxCaps[] =
 {
 	CAP_UINT(GF_CAPS_INPUT, GF_PROP_PID_STREAM_TYPE, GF_STREAM_FILE),
 	CAP_STRING(GF_CAPS_INPUT, GF_PROP_PID_FILE_EXT, "mpg|mpeg|vob"),
-	CAP_STRING(GF_CAPS_INPUT, GF_PROP_PID_MIME, "video/mpeg|audio/mpeg|video/mpegps"),
+	CAP_STRING(GF_CAPS_INPUT, GF_PROP_PID_MIME, "video/mpeg|video/mpegps"),
 	//we need a file for this demuxer
 	CAP_STRING(GF_CAPS_INPUT, GF_PROP_PID_FILEPATH, "*"),
 	CAP_UINT(GF_CAPS_OUTPUT, GF_PROP_PID_STREAM_TYPE, GF_STREAM_AUDIO),
@@ -488,7 +488,8 @@ GF_FilterRegister M2PSDmxRegister = {
 	.process_event = m2psdmx_process_event,
 	.probe_data = m2psdmx_probe_data,
 	//this filter is not very reliable, prefer ffmpeg when available
-	.priority = 255
+	.priority = 255,
+	.hint_class_type = GF_FS_CLASS_DEMULTIPLEXER
 };
 
 #endif // GPAC_DISABLE_MPEG2PS
@@ -503,6 +504,7 @@ const GF_FilterRegister * EMSCRIPTEN_KEEPALIVE m2psdmx_register(GF_FilterSession
 }
 
 
+/*Bevara: side modules register their own filters at load time.*/
 #include "filter_register.h"
 __attribute__((constructor))
 void register_m2psdmx(void) {

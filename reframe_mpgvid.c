@@ -2,7 +2,7 @@
  *			GPAC - Multimedia Framework C SDK
  *
  *			Authors: Jean Le Feuvre
- *			Copyright (c) Telecom ParisTech 2000-2023
+ *			Copyright (c) Telecom ParisTech 2000-2026
  *					All rights reserved
  *
  *  This file is part of GPAC / MPEG-1/2/4(Part2) video reframer filter
@@ -109,19 +109,24 @@ GF_Err mpgviddmx_configure_pid(GF_Filter *filter, GF_FilterPid *pid, Bool is_rem
 		return GF_NOT_SUPPORTED;
 
 	ctx->ipid = pid;
-	ctx->cur_fps = ctx->fps;
-	if (!ctx->fps.num || !ctx->fps.den) {
-		ctx->cur_fps.num = 25000;
-		ctx->cur_fps.den = 1000;
+	if (!ctx->cur_fps.num) {
+		ctx->cur_fps = ctx->fps;
+		if (!ctx->fps.num || !ctx->fps.den) {
+			ctx->cur_fps.num = 25000;
+			ctx->cur_fps.den = 1000;
+		}
 	}
 
 	p = gf_filter_pid_get_property(pid, GF_PROP_PID_TIMESCALE);
 	if (p) {
-		ctx->timescale = ctx->cur_fps.num = p->value.uint;
-		ctx->cur_fps.den = 0;
+		u32 old_timescale = ctx->timescale;
+		ctx->timescale = p->value.uint;
 		p = gf_filter_pid_get_property(pid, GF_PROP_PID_FPS);
 		if (p) {
 			ctx->cur_fps = p->value.frac;
+		} else if (!old_timescale || (old_timescale != ctx->timescale)) {
+			ctx->cur_fps.den = 0;
+			ctx->cur_fps.num = ctx->timescale;
 		}
 		p = gf_filter_pid_get_property_str(pid, "nocts");
 		if (p && p->value.boolean) ctx->recompute_cts = GF_TRUE;
@@ -189,9 +194,8 @@ static void mpgviddmx_check_dur(GF_Filter *filter, GF_MPGVidDmxCtx *ctx)
 		} else {
 			p = gf_filter_pid_get_property(ctx->ipid, GF_PROP_PID_DOWN_SIZE);
 			if (!p || (p->value.longuint > 20000000)) {
-				GF_LOG(GF_LOG_INFO, GF_LOG_MEDIA, ("[MPGVids] Source file larger than 20M, skipping indexing\n"));
-				if (!gf_sys_is_test_mode())
-					probe_size = 20000000;
+				GF_LOG(GF_LOG_INFO, GF_LOG_MEDIA, ("[MPGVid] Large source file - estimating dur/rate on first 20 MB\n"));
+				probe_size = 20000000;
 			} else {
 				ctx->index = -ctx->index;
 			}
@@ -274,8 +278,10 @@ static void mpgviddmx_check_dur(GF_Filter *filter, GF_MPGVidDmxCtx *ctx)
 		ctx->duration.den = ctx->cur_fps.num;
 
 		gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_DURATION, & PROP_FRAC64(ctx->duration));
+		if (probe_size)
+			gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_DURATION_AVG, &PROP_BOOL(GF_TRUE) );
 
-		if (duration && !gf_sys_is_test_mode() ) {
+		if (duration) {
 			rate *= 8 * ctx->duration.den;
 			rate /= ctx->duration.num;
 			ctx->bitrate = (u32) rate;
@@ -317,9 +323,8 @@ static void mpgviddmx_enqueue_or_dispatch(GF_MPGVidDmxCtx *ctx, GF_FilterPacket 
 				if (ctx->last_ref_cts == cts) {
 					cts += ctx->b_frames * ctx->cur_fps.den;
 					gf_filter_pck_set_cts(q_pck, cts);
-				} else {
+				} else if (cts >= ctx->cur_fps.den) {
 					//shift all other frames (i.e. pending Bs) by 1 frame in the past since we move the ref frame after them
-					gf_assert(cts >= ctx->cur_fps.den);
 					cts -= ctx->cur_fps.den;
 					gf_filter_pck_set_cts(q_pck, cts);
 				}
@@ -445,13 +450,10 @@ static void mpgviddmx_check_pid(GF_Filter *filter, GF_MPGVidDmxCtx *ctx, u32 vos
 		gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_PLAYBACK_MODE, & PROP_UINT(GF_PLAYBACK_MODE_FASTFORWARD) );
 	}
 
-	if (!gf_sys_is_test_mode()) {
-		if (ctx->dsi.chroma_fmt)
-			gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_COLR_CHROMAFMT, & PROP_UINT(ctx->dsi.chroma_fmt) );
+	gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_COLR_CHROMAFMT, & PROP_UINT(ctx->dsi.chroma_fmt) );
 
-		if (ctx->is_mpg12)
-			gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_INTERLACED, !ctx->dsi.progresive ? & PROP_BOOL(GF_TRUE) : NULL );
-	}
+	if (ctx->is_mpg12)
+		gf_filter_pid_set_property(ctx->opid, GF_PROP_PID_INTERLACED, !ctx->dsi.progresive ? & PROP_BOOL(GF_TRUE) : NULL );
 
 	if (flush_after)
 		mpgviddmx_enqueue_or_dispatch(ctx, NULL, GF_TRUE, GF_FALSE);
@@ -464,6 +466,7 @@ static Bool mpgviddmx_process_event(GF_Filter *filter, const GF_FilterEvent *evt
 	u64 file_pos = 0;
 	GF_FilterEvent fevt;
 	GF_MPGVidDmxCtx *ctx = gf_filter_get_udta(filter);
+	if (!ctx->ipid) return GF_TRUE;
 
 	switch (evt->base.type) {
 	case GF_FEVT_PLAY:
@@ -737,9 +740,11 @@ GF_Err mpgviddmx_process(GF_Filter *filter)
 		//we have some potential bytes of a start code in the store, copy some more bytes and check if valid start code.
 		//if not, dispatch these bytes as continuation of the data
 		if (ctx->bytes_in_header) {
+			u32 csize = MIN_HDR_STORE - ctx->bytes_in_header;
+			if (csize > (u32) remain) csize=remain;
 			//the two zones may overlap
-			memmove(ctx->hdr_store + ctx->bytes_in_header, start, MIN_HDR_STORE - ctx->bytes_in_header);
-			current = mpgviddmx_next_start_code(ctx->hdr_store, MIN_HDR_STORE);
+			memmove(ctx->hdr_store + ctx->bytes_in_header, start, csize);
+			current = mpgviddmx_next_start_code(ctx->hdr_store, ctx->bytes_in_header+csize);
 
 			//no start code in stored buffer
 			if ((current<0) || (current >= (s32) ctx->bytes_in_header) )  {
@@ -1180,9 +1185,11 @@ GF_Err mpgviddmx_process(GF_Filter *filter)
 		}
 
 		if (ftype) {
-			gf_assert(pck_data[0] == 0);
-			gf_assert(pck_data[1] == 0);
-			gf_assert(pck_data[2] == 1);
+			if (size < 3 || pck_data[0] != 0 || pck_data[1] != 0 || pck_data[2] != 1) {
+				gf_filter_pid_drop_packet(ctx->ipid);
+				gf_filter_pck_discard(dst_pck);
+				return GF_BAD_PARAM;
+			}
 
 			gf_filter_pck_set_framing(dst_pck, GF_TRUE, (full_frame || ctx->input_is_au_end) ? GF_TRUE : GF_FALSE);
 			gf_filter_pck_set_cts(dst_pck, ctx->cts);
@@ -1403,23 +1410,25 @@ GF_FilterRegister MPGVidDmxRegister = {
 	.configure_pid = mpgviddmx_configure_pid,
 	.process = mpgviddmx_process,
 	.probe_data = mpgvdmx_probe_data,
-	.process_event = mpgviddmx_process_event
+	.process_event = mpgviddmx_process_event,
+	.hint_class_type = GF_FS_CLASS_FRAMING
 };
 
 
-const GF_FilterRegister * EMSCRIPTEN_KEEPALIVE mpgviddmx_register(GF_FilterSession *session)
+const GF_FilterRegister *rfmpgvid_register(GF_FilterSession *session)
 {
 	return &MPGVidDmxRegister;
 }
 #else
-const GF_FilterRegister *mpgviddmx_register(GF_FilterSession *session)
+const GF_FilterRegister *rfmpgvid_register(GF_FilterSession *session)
 {
 	return NULL;
 }
 #endif // #if !defined(GPAC_DISABLE_AV_PARSERS) && !defined(GPAC_DISABLE_RFMPGVID)
 
+/*Bevara: side modules register their own filters at load time.*/
 #include "filter_register.h"
 __attribute__((constructor))
 void register_mpgviddmx(void) {
-    gf_filter_auto_register("mpgviddmx", mpgviddmx_register);
+    gf_filter_auto_register("mpgviddmx", rfmpgvid_register);
 }
