@@ -16,5 +16,6 @@
     "extension":{
       "mpg" : "canvas"
     },
-    "licence_required":false
+    "licence_required":false,
+    "using": ["solver_1"]
 }
