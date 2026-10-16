@@ -16,7 +16,6 @@
     "extension":{
       "mpg" : "canvas"
     },
-    "licence_required":false,
     "using": ["solver_1"],
     "runtime": {
         "ffdec": {
@@ -31,5 +30,10 @@
                 }
             ]
         }
+    },
+    "patents": {
+        "status": "expired",
+        "note": "MPEG-1 and MPEG-2 video",
+        "checked": "2026-10-16"
     }
 }
