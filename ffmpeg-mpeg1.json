@@ -1,6 +1,6 @@
 {
     "name": "ffmpeg-mpeg1",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "description": "ffmpeg mpeg1 decoder",
     "filters":["ffdec","rfmpgvid","m2psdmx"],
     "help": "This is a reduced version of ffmpeg adapted to decode mpeg1 contents in a canvas.",
@@ -17,7 +17,7 @@
     "extension":{
       "mpg" : "canvas"
     },
-    "using": ["solver_1"],
+    "using": ["mm_solver_1.0.1"],
     "runtime": {
         "ffdec": {
             "outputs": [
